@@ -11,13 +11,13 @@ Summary: 使用 Blender 5.1 搭建海底场景，将石堆分割为独立石块�
 
 搭建海底地形，放置石堆模型作为场景主体元素。
 
-![海底场景参考](./images/reference.png)
+![海底场景参考]({static}/images/reference.png)
 
 ## 石堆分割
 
 将整体石堆模型分割为独立石块，便于单独调整每一块的位置与角度。
 
-![场景概览](./images/scene-overview.png)
+![场景概览]({static}/images/scene-overview.png)
 
 ## 分布调整
 
@@ -27,19 +27,19 @@ Summary: 使用 Blender 5.1 搭建海底场景，将石堆分割为独立石块�
 
 对石块表面进行平滑处理，减少锐利边缘，更贴近水底冲刷的视觉效果。
 
-![平滑处理](./images/smooth-rock.png)
+![平滑处理]({static}/images/smooth-rock.png)
 
 ### 凹陷处理
 
 部分石块增加凹陷细节，模拟侵蚀痕迹。
 
-![凹陷处理](./images/concave-rock.png)
+![凹陷处理]({static}/images/concave-rock.png)
 
 ### 多块分布
 
 调整每块石头的旋转角度，使其紧贴海底斜面，消除悬浮感。
 
-![多块分布](./images/multi-rock.png)
+![多块分布]({static}/images/multi-rock.png)
 
 ---
 
