@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh">
+        <head>
+                        <meta charset="utf-8" />
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                        <meta name="generator" content="Pelican" />
+                        <title>SfM 三维重建：从 COLMAP 到 SuperGlue 特征匹配</title>
+                        <link rel="stylesheet" href="https://zhanwang-66.github.io/theme/css/main.css" />
+                        <link rel="stylesheet" href="https://zhanwang-66.github.io/custom.css" />
+                                <link href="https://zhanwang-66.github.io/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Zhanwang Blog Atom Feed" />
+                                <link href="https://zhanwang-66.github.io/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Zhanwang Blog RSS Feed" />
+    <meta name="description" content="梳理 Structure from Motion（SfM）流程，从传统 COLMAP 方案到 SuperGlue / LightGlue 深度学习特征匹配，结合实验分析差异。" />
+        </head>
+
+        <body id="index" class="home">
+                <header id="banner" class="body">
+                        <h1><a href="https://zhanwang-66.github.io/">Zhanwang Blog</a></h1>
+                        <nav><ul>
+                                        <li><a href="/">首页</a></li>
+                        </ul></nav>
+                </header><!-- /#banner -->
+  <section id="content" class="body">
+    <article>
+      <header>
+        <h1 class="entry-title">
+          <a href="https://zhanwang-66.github.io/posts/sfm-superglue-feature-matching/" rel="bookmark"
+             title="Permalink to SfM 三维重建：从 COLMAP 到 SuperGlue 特征匹配">SfM 三维重建：从 COLMAP 到 SuperGlue 特征匹配</a></h1>
+      </header>
+
+      <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2026-05-25T10:00:00+08:00">
+                Published: 周一 25 五月 2026
+        </abbr>
+
+                <address class="vcard author">
+                        By                                 <a class="url fn" href="https://zhanwang-66.github.io/author/zhanwang-66.html">zhanwang-66</a>
+                </address>
+        <p>In <a href="https://zhanwang-66.github.io/category/ji-zhu/">技术</a>.</p>
+<p>tags: <a href="https://zhanwang-66.github.io/tag/sfm/">SfM</a> <a href="https://zhanwang-66.github.io/tag/superglue/">SuperGlue</a> <a href="https://zhanwang-66.github.io/tag/colmap/">COLMAP</a> <a href="https://zhanwang-66.github.io/tag/te-zheng-pi-pei/">特征匹配</a> <a href="https://zhanwang-66.github.io/tag/san-wei-zhong-jian/">三维重建</a> <a href="https://zhanwang-66.github.io/tag/lightglue/">LightGlue</a> </p>        
+</footer><!-- /.post-info -->        <p>Structure from Motion（SfM）是计算机视觉中从多视角二维图像恢复三维结构与相机位姿的核心技术。本文梳理 SfM 完整流程，并聚焦特征匹配环节，对比传统方法与基于深度学习的 SuperGlue / LightGlue 方案。</p>
+<h2 id="sfm">SfM 流程概览<a class="headerlink" href="#sfm" title="Permanent link">#</a></h2>
+<p>SfM 基于多视图几何关系，从一组无序图像中同时估计相机参数与稀疏三维点云。典型流程：</p>
+<blockquote>
+<p><strong>输入图像 → 特征提取 → 特征匹配 → 几何验证 → 增量式稀疏重建 → Bundle Adjustment → 稀疏点云</strong></p>
+</blockquote>
+<p>在此基础上可扩展：稠密点云（MVS）→ Mesh 建模 → 表面纹理 → 更前沿的 NeRF 或 3D Gaussian Splatting。</p>
+<p>主流 SfM 工具包括 COLMAP（开源标杆）、VisualSFM、VVGT 等。</p>
+<h2 id="colmap">COLMAP：经典流水线<a class="headerlink" href="#colmap" title="Permanent link">#</a></h2>
+<p>COLMAP 是苏黎世联邦理工学院（ETH Zurich）开发的开源 SfM + MVS 流水线，提供图形界面与命令行接口，是学术研究与工业应用中最广泛使用的三维重建工具之一。其标准增量式 SfM 流程：</p>
+<ol>
+<li><strong>特征提取</strong> — 使用 Covariant SIFT 为每张图像提取局部特征点与描述子</li>
+<li><strong>穷举匹配与几何验证</strong> — 生成所有图像对，进行特征匹配并通过对极几何验证内点数</li>
+<li><strong>增量式稀疏重建</strong> — 选择初始图像对（高内点数 + 大基线）→ 逐张注册新图像（PnP 求解位姿）→ 三角化新增三维点 → 全局 Bundle Adjustment 优化重投影误差</li>
+<li><strong>输出</strong> — 相机内参/外参 + 稀疏三维点云</li>
+</ol>
+<div class="highlight"><pre><span></span><code>注册图像 #16 =&gt; 观察到 621 / 4393 个三维点
+全局 Bundle Adjustment → 联合优化所有相机位姿与三维点位置
+</code></pre></div>
+
+<p>COLMAP 在纹理丰富的场景表现优秀，但其依赖 SIFT 特征在弱纹理、重复纹理、大视角变化下会出现大量误匹配，导致重建失败或精度下降。</p>
+<h2 id="_1">深度学习特征匹配<a class="headerlink" href="#_1" title="Permanent link">#</a></h2>
+<p>传统特征匹配依赖手工规则（最近邻搜索 + 比值测试 + RANSAC 几何验证），在挑战性场景中鲁棒性不足。Magic Leap 团队提出的 SuperGlue 将深度学习引入匹配环节，显著提升了匹配质量。</p>
+<h3 id="superpoint">SuperPoint（特征提取）<a class="headerlink" href="#superpoint" title="Permanent link">#</a></h3>
+<p>SuperPoint（DeTone et al., CVPR 2018 Workshop）是自监督学习的特征点检测与描述子网络。在 Synthetic Shapes 数据集上预训练基础检测器，再通过单应性变换在真实图像上自举训练，无需人工标注。输出为每个像素点的兴趣分数与 256 维描述子。</p>
+<h3 id="superglue">SuperGlue（特征匹配）<a class="headerlink" href="#superglue" title="Permanent link">#</a></h3>
+<p>SuperGlue（Sarlin et al., CVPR 2020 <strong>Oral</strong>）是匹配两组局部特征的图神经网络。核心设计：</p>
+<ul>
+<li><strong>注意力图神经网络</strong> — 在两组特征点内部和之间建立图结构，通过多头注意力聚合上下文信息，使网络能够联合推理三维场景结构与特征分配</li>
+<li><strong>可微分最优运输层</strong> — 将匹配问题建模为最优运输问题，通过 Sinkhorn 算法迭代求解软分配矩阵。该层天然处理遮挡点与不可匹配点——为它们分配一个额外的 "dustbin" 通道</li>
+<li><strong>端到端训练</strong> — 从图像对直接学习几何变换的先验知识，在室内外大基线场景的姿态估计上达到 state-of-the-art</li>
+</ul>
+<p>SuperGlue 在现代 GPU 上可达到实时性能，可直接集成到现有 SfM 或 SLAM 系统中。代码与预训练权重在 GitHub 上公开发布。</p>
+<p><img alt="特征匹配结果" src="https://zhanwang-66.github.io/images/sfm/match-output.png" /></p>
+<p><img alt="特征点选取" src="https://zhanwang-66.github.io/images/sfm/select-points.png" /></p>
+<h3 id="lightglue">LightGlue<a class="headerlink" href="#lightglue" title="Permanent link">#</a></h3>
+<p>LightGlue（Lindenberger et al., ICCV 2023）由 SuperGlue 作者之一 Paul-Edouard Sarlin 参与，ETH Zurich 的 Computer Vision and Geometry Group 提出。它重新审视了 SuperGlue 的多个设计决策并做出改进：</p>
+<ul>
+<li><strong>自适应推理深度</strong> — 根据图像对的匹配难度动态调整网络层数：容易匹配的图像对提前退出，大幅减少计算量</li>
+<li><strong>更高的效率</strong> — 在内存和计算量上均优于 SuperGlue</li>
+<li><strong>更易训练</strong> — 简化了训练流程</li>
+<li><strong>精度不降反升</strong> — 在多个基准上达到更高匹配精度</li>
+</ul>
+<p>这为在 3D 重建等延迟敏感应用中部署深度学习匹配器打开了新的可能。</p>
+<p><img alt="SuperGlue 与 LightGlue 对比" src="https://zhanwang-66.github.io/images/sfm/sfm-slide3-img4.png" /></p>
+<p><img alt="匹配效果展示" src="https://zhanwang-66.github.io/images/sfm/sfm-slide3-img5.png" /></p>
+<h2 id="_2">实验结果<a class="headerlink" href="#_2" title="Permanent link">#</a></h2>
+<p>使用实际拍摄的多组图像序列，分别测试了传统 SIFT + 最近邻匹配与 SuperGlue 方案的性能差异：</p>
+<p><img alt="实验对比 1" src="https://zhanwang-66.github.io/images/sfm/sfm-slide3-img6.png" /></p>
+<p><img alt="实验对比 2" src="https://zhanwang-66.github.io/images/sfm/sfm-slide3-img7.png" /></p>
+<p><img alt="稀疏重建结果" src="https://zhanwang-66.github.io/images/sfm/sfm-slide4-img0.png" /></p>
+<h2 id="_3">总结<a class="headerlink" href="#_3" title="Permanent link">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>传统方案</th>
+<th>深度学习方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>特征提取</td>
+<td>SIFT（手工设计）</td>
+<td>SuperPoint（自监督 CNN）</td>
+</tr>
+<tr>
+<td>特征匹配</td>
+<td>最近邻 + 比值测试 + RANSAC</td>
+<td>SuperGlue / LightGlue（GNN + 最优运输）</td>
+</tr>
+<tr>
+<td>遮挡处理</td>
+<td>启发式阈值</td>
+<td>Dustbin 通道，端到端学习</td>
+</tr>
+<tr>
+<td>计算效率</td>
+<td>CPU 友好</td>
+<td>需 GPU，LightGlue 可自适应加速</td>
+</tr>
+<tr>
+<td>鲁棒性</td>
+<td>纹理敏感、大视角退化</td>
+<td>弱纹理与大视角显著优于传统</td>
+</tr>
+</tbody>
+</table>
+<p>深度学习特征匹配已成为 SfM 流水线的关键升级方向。在实际项目中，可保持 COLMAP 的重建管线，将特征提取与匹配替换为 SuperPoint + SuperGlue/LightGlue，在弱纹理和大视角场景中获得更稳定、更密集的匹配结果。</p>
+      </div><!-- /.entry-content -->
+
+    </article>
+  </section>
+                <section id="extras" class="body">
+                                <div class="social">
+                                        <h2>social</h2>
+                                        <ul>
+                                                        <li><a href="https://zhanwang-66.github.io/feeds/all.atom.xml" type="application/atom+xml" rel="alternate">atom feed</a></li>
+                                                        <li><a href="https://zhanwang-66.github.io/feeds/all.rss.xml" type="application/rss+xml" rel="alternate">rss feed</a></li>
+
+                                        </ul>
+                                </div><!-- /.social -->
+                </section><!-- /#extras -->
+
+                <footer id="contentinfo" class="body">
+                        <address id="about" class="vcard body">
+                                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                        </address><!-- /#about -->
+
+                        <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+                </footer><!-- /#contentinfo -->
+
+        </body>
+</html>
