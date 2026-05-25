@@ -44,7 +44,7 @@ MARKDOWN = {
 }
 
 # ── Theme ────────────────────────────────────────────────
-# THEME = 'theme'  # 当前使用 Pelican 内置 simple 主题，后续可自定义
+THEME_TEMPLATES_OVERRIDES = ['templates']
 
 # ── Plugins ──────────────────────────────────────────────
 PLUGINS = []
@@ -54,7 +54,12 @@ STATIC_PATHS = ['images', 'extra']
 EXTRA_PATH_METADATA = {
     'extra/favicon.ico': {'path': 'favicon.ico'},
     'extra/CNAME': {'path': 'CNAME'},
+    'extra/custom.css': {'path': 'custom.css'},
 }
+STYLESHEET_URL = '/custom.css'
+MENUITEMS = [
+    ('首页', '/'),
+]
 
 # ── Disable unused pages ─────────────────────────────────
 AUTHOR_SAVE_AS = ''

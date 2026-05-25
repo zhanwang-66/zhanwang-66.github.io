@@ -1,9 +1,8 @@
 Title: 博客上线
-Date: 2025-01-15 12:00
-Category: 随笔
-Tags: 博客, 日常
+Date: 2026-05-25 12:00
 Slug: hello-world
 Summary: 个人博客正式上线！这里将记录我的思考、学习和生活。
+
 
 # 博客上线 🎉
 
